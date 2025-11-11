@@ -6,9 +6,7 @@ Code to scrape, merge and analyse Fantasy Premier League (FPL) data
 
 Fantasy Premier League (FPL) is a game played by millions of football fans globally. Players of the game choose real-life premier league goalkeepers, defenders, midfielders and forwards and are awarded points according to the performances, for example a goal scored by a defender is 6 points and an assist is worth 3 points. Each player has a cost which can change over time.
 
-In order to choose the best FPL team, it would be useful to scrape and join data from different sources.
-
-There are 3 steps to this process:
+There are 4 steps to this process:
 1. Scrape and join data from Vaastav Github & the FPL website
 2. Transform data and add new features: running averages, metrics per 90 etc.
 3. Use Random Forest regression to predict components of FPL points. Combine these to create a xPoints estimate for each player and gameweek.
@@ -18,7 +16,7 @@ There are 3 steps to this process:
 1. Clone the repository to your lcoal machine
 2. Install the reuired python packages with pip
 3. Set up your PostgreSQL database and update the connection details in the script (replace placeholders in the CJDH_local_settings.py file).
-4. Run the scripts/notebooks in order: Load_FPL_data_vaastav, FPL-League-Scrape, TransformData, FPL-Components-Prediction, TRDL-Team-Analysis
+4. Run the scripts/notebooks in order: Load_FPL_data_vaastav, FPL-League-Scrape, TransformData, FPL-Components-Prediction, TRDL-Team-Analysis (or DIvX-Team-Analysis for a more generalised solution)
 
 
 #### Load_FPL_data_vaastav:
