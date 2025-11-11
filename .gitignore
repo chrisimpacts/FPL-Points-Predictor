@@ -1,0 +1,6 @@
+CJDH_local_settings.py
+__pycache__/CJDH_local_settings.cpython-311.pyc
+
+# Ignore huge CSVs
+data/FPL_CurrentS_Player_Allfixtures_vaastav.csv
+data/FPL_Data_GWs_2018to25_vaastav.csv
