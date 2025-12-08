@@ -1,6 +1,6 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
 import matplotlib.pyplot as plt
@@ -8,7 +8,7 @@ from typing import List, Set, Tuple, Optional, Dict, Any
 
 class FPLPredictor:
     """
-    Fantasy Premier League points predictor using Random Forest.
+    Fantasy Premier League points predictor using Random Forest with GridSearch optimization.
     
     Parameters:
     -----------
@@ -26,6 +26,12 @@ class FPLPredictor:
         Random seed for reproducibility
     rf_params : dict, optional
         Parameters for RandomForestRegressor
+    optimize : bool, default=False
+        Whether to use GridSearchCV for hyperparameter optimization
+    param_grid : dict, optional
+        Parameter grid for GridSearchCV
+    cv_folds : int, default=5
+        Number of cross-validation folds for GridSearchCV
     """
     
     def __init__(
@@ -36,13 +42,18 @@ class FPLPredictor:
         columns_to_drop: Optional[List[str]] = None,
         test_size: float = 0.2,
         random_state: int = 42,
-        rf_params: Optional[Dict[str, Any]] = None
+        rf_params: Optional[Dict[str, Any]] = None,
+        optimize: bool = False,
+        param_grid: Optional[Dict[str, List]] = None,
+        cv_folds: int = 5
     ):
         self.data = data.copy()
         self.target = target
         self.positions = set(positions) if isinstance(positions, list) else positions
         self.test_size = test_size
         self.random_state = random_state
+        self.optimize = optimize
+        self.cv_folds = cv_folds
         
         # Default columns to drop
         self.default_columns_to_drop = [
@@ -65,12 +76,9 @@ class FPLPredictor:
             'minutes_per90_alltime_avg','opp_team_elo_per90_alltime_avg',
             'expected_goals_per90_alltime_avg','expected_assists_per90_alltime_avg','expected_goals_conceded_per90_alltime_avg','goals_scored_per90_alltime_avg','total_points_per90_alltime_avg','bps_per90_alltime_avg','team_elo_per90_alltime_avg',
             'goals_conceded_per90_alltime_avg','clean_sheets_per90_alltime_avg','bonus_per90_alltime_avg',
-            # 'opp_team_elo_per90_running_avg_prev_1', 'team_elo_per90_running_avg_prev_1',
-            # 'opp_team_elo_per90_running_avg_prev_2', 'team_elo_per90_running_avg_prev_2',
             'opp_team_elo_per90_running_avg_prev_3', 'team_elo_per90_running_avg_prev_3',
             'opp_team_elo_per90_running_avg_prev_5', 'team_elo_per90_running_avg_prev_5',
             'opp_team_elo_per90_running_avg_prev_10', 'team_elo_per90_running_avg_prev_10',
-            # 'minutes_per90_running_avg_prev_1', 'minutes_per90_running_avg_prev_2',
             'minutes_per90_running_avg_prev_3', 'minutes_per90_running_avg_prev_5',
             'minutes_per90_running_avg_prev_10'
         ]
@@ -99,8 +107,20 @@ class FPLPredictor:
         
         self.rf_params = default_rf_params
         
+        # Default parameter grid for GridSearchCV
+        self.default_param_grid = {
+            'n_estimators': [50, 100, 200],
+            'max_depth': [10],
+            'min_samples_split': [2, 5, 20]
+        }
+        
+        # Use custom param grid if provided
+        self.param_grid = param_grid if param_grid else self.default_param_grid
+        
         # Initialize model and data containers
         self.model = None
+        self.grid_search = None
+        self.best_params = None
         self.features = None
         self.X_train = None
         self.X_test = None
@@ -127,12 +147,6 @@ class FPLPredictor:
         # Define features
         self.features = df_filtered.columns.drop(self.columns_to_drop).tolist()
         
-        # # Check NAs
-        # nas = [(col, df_filtered[col].isna().sum()) for col in self.features]
-        # nas_sorted = sorted(nas, key=lambda x: x[1], reverse=True)
-        # for col, count in nas_sorted:
-        #     print(f"{col}: {count}")
-
         # Remove rows with missing values
         df_clean = df_filtered[self.features + [self.target]].dropna()
         
@@ -159,9 +173,43 @@ class FPLPredictor:
         )
         
     def train(self) -> None:
-        """Train the Random Forest model."""
-        self.model = RandomForestRegressor(**self.rf_params)
-        self.model.fit(self.X_train, self.y_train)
+        """Train the Random Forest model with optional GridSearchCV optimization."""
+        if self.optimize:
+            print("\nPerforming GridSearchCV hyperparameter optimization...")
+            print(f"Parameter grid: {self.param_grid}")
+            print(f"Cross-validation folds: {self.cv_folds}")
+            
+            # Create base model
+            base_model = RandomForestRegressor(
+                random_state=self.random_state,
+                n_jobs=-1
+            )
+            
+            # Perform grid search
+            self.grid_search = GridSearchCV(
+                estimator=base_model,
+                param_grid=self.param_grid,
+                cv=self.cv_folds,
+                scoring='neg_mean_squared_error',
+                n_jobs=-1,
+                verbose=2
+            )
+            
+            self.grid_search.fit(self.X_train, self.y_train)
+            
+            # Get best model and parameters
+            self.model = self.grid_search.best_estimator_
+            self.best_params = self.grid_search.best_params_
+            
+            print("\nBest parameters found:")
+            for param, value in self.best_params.items():
+                print(f"  {param}: {value}")
+            print(f"\nBest CV RMSE: {np.sqrt(-self.grid_search.best_score_):.4f}")
+            
+        else:
+            # Train with specified parameters
+            self.model = RandomForestRegressor(**self.rf_params)
+            self.model.fit(self.X_train, self.y_train)
         
     def predict(self) -> Tuple[np.ndarray, np.ndarray]:
         """
@@ -212,9 +260,14 @@ class FPLPredictor:
         
         return {'train': train_metrics, 'test': test_metrics}
     
-    def get_feature_importance(self) -> pd.DataFrame:
+    def get_feature_importance(self, top_n: int = 15) -> pd.DataFrame:
         """
         Get feature importance from the trained model.
+        
+        Parameters:
+        -----------
+        top_n : int, default=20
+            Number of top features to display
         
         Returns:
         --------
@@ -226,27 +279,31 @@ class FPLPredictor:
             'importance': self.model.feature_importances_
         }).sort_values('importance', ascending=False)
         
-        print("\nFeature Importance:")
-        print(self.feature_importance_df.to_string(index=False))
+        print(f"\nTop {top_n} Feature Importances:")
+        print(self.feature_importance_df.head(top_n).to_string(index=False))
         
         return self.feature_importance_df
     
-    def plot_results(self, figsize: Tuple[int, int] = (14, 10)) -> None:
+    def plot_results(self, figsize: Tuple[int, int] = (16, 6), top_n: int = 15) -> None:
         """
         Visualize feature importance and actual vs predicted values.
         
         Parameters:
         -----------
-        figsize : tuple, default=(14, 10)
+        figsize : tuple, default=(16, 6)
             Figure size for plots
+        top_n : int, default=15
+            Number of top features to display in importance plot
         """
         fig, axes = plt.subplots(1, 2, figsize=figsize)
         
-        # Plot 1: Feature Importance
-        axes[0].barh(self.feature_importance_df['feature'], 
-                     self.feature_importance_df['importance'])
+        # Plot 1: Top N Feature Importance
+        top_features = self.feature_importance_df.head(top_n)
+        axes[0].barh(range(len(top_features)), top_features['importance'])
+        axes[0].set_yticks(range(len(top_features)))
+        axes[0].set_yticklabels(top_features['feature'])
         axes[0].set_xlabel('Importance')
-        axes[0].set_title('Feature Importance')
+        axes[0].set_title(f'Top {top_n} Feature Importance')
         axes[0].invert_yaxis()
         
         # Plot 2: Actual vs Predicted
@@ -257,6 +314,34 @@ class FPLPredictor:
         axes[1].set_xlabel('Actual')
         axes[1].set_ylabel('Predicted')
         axes[1].set_title('Actual vs Predicted (Test Set)')
+        axes[1].grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.show()
+    
+    def plot_cv_results(self) -> None:
+        """Plot GridSearchCV results if optimization was performed."""
+        if not self.optimize or self.grid_search is None:
+            print("No GridSearchCV results to plot. Set optimize=True.")
+            return
+        
+        cv_results = pd.DataFrame(self.grid_search.cv_results_)
+        
+        # Plot mean test scores
+        fig, ax = plt.subplots(figsize=(10, 6))
+        
+        scores = -cv_results['mean_test_score']  # Convert negative MSE to positive
+        scores_rmse = np.sqrt(scores)
+        
+        ax.plot(range(len(scores_rmse)), scores_rmse, 'o-')
+        ax.axhline(y=np.sqrt(-self.grid_search.best_score_), 
+                   color='r', linestyle='--', 
+                   label=f'Best RMSE: {np.sqrt(-self.grid_search.best_score_):.4f}')
+        ax.set_xlabel('Parameter Combination Index')
+        ax.set_ylabel('RMSE (Cross-Validation)')
+        ax.set_title('GridSearchCV Results')
+        ax.legend()
+        ax.grid(True, alpha=0.3)
         
         plt.tight_layout()
         plt.show()
@@ -278,6 +363,154 @@ class FPLPredictor:
         self.get_feature_importance()
         
         return self
+    
+    def get_largest_errors(self, n: int = 15, dataset: str = 'test', 
+                          return_full_data: bool = False) -> pd.DataFrame:
+        """
+        Get rows with largest prediction errors.
+        
+        Parameters:
+        -----------
+        n : int, default=20
+            Number of rows to return
+        dataset : str, default='test'
+            Which dataset to analyze ('test' or 'train')
+        return_full_data : bool, default=False
+            If True, return all original columns; if False, return only key columns
+            
+        Returns:
+        --------
+        error_df : pd.DataFrame
+            DataFrame with largest errors, sorted by absolute error
+        """
+        if self.model is None:
+            raise ValueError("Model not trained yet. Call fit() first.")
+        
+        # Select the appropriate dataset
+        if dataset == 'test':
+            X = self.X_test
+            y_actual = self.y_test
+            y_pred = self.y_pred_test
+        elif dataset == 'train':
+            X = self.X_train
+            y_actual = self.y_train
+            y_pred = self.y_pred_train
+        else:
+            raise ValueError("dataset must be 'test' or 'train'")
+        
+        # Calculate errors
+        errors = y_actual - y_pred
+        abs_errors = np.abs(errors)
+        
+        # Create results dataframe
+        if return_full_data:
+            # Get original data for these indices
+            original_indices = X.index
+            error_df = self.data.loc[original_indices].copy()
+        else:
+            error_df = X.copy()
+        
+        error_df['actual'] = y_actual.values
+        error_df['predicted'] = y_pred
+        error_df['error'] = errors.values
+        error_df['abs_error'] = abs_errors.values
+        error_df['pct_error'] = (errors.values / y_actual.values * 100).round(2)
+        
+        # Sort by absolute error and get top n
+        error_df = error_df.sort_values('abs_error', ascending=False).head(n)
+                
+        return error_df
+    
+    def analyze_errors(self, dataset: str = 'test') -> Dict[str, Any]:
+        """
+        Comprehensive error analysis including statistics and visualizations.
+        
+        Parameters:
+        -----------
+        dataset : str, default='test'
+            Which dataset to analyze ('test' or 'train')
+            
+        Returns:
+        --------
+        analysis : dict
+            Dictionary containing error statistics
+        """
+        if self.model is None:
+            raise ValueError("Model not trained yet. Call fit() first.")
+        
+        # Select the appropriate dataset
+        if dataset == 'test':
+            y_actual = self.y_test
+            y_pred = self.y_pred_test
+        elif dataset == 'train':
+            y_actual = self.y_train
+            y_pred = self.y_pred_train
+        else:
+            raise ValueError("dataset must be 'test' or 'train'")
+        
+        # Calculate errors
+        errors = y_actual - y_pred
+        abs_errors = np.abs(errors)
+        
+        # Calculate statistics
+        analysis = {
+            'mean_error': errors.mean(),
+            'median_error': np.median(errors),
+            'std_error': errors.std(),
+            'mean_abs_error': abs_errors.mean(),
+            'median_abs_error': np.median(abs_errors),
+            'max_overpredict': errors.min(),  # Most negative error
+            'max_underpredict': errors.max(),  # Most positive error
+            'max_abs_error': abs_errors.max()
+        }
+        
+        print(f"\nError Analysis ({dataset.upper()} set):")
+        print("=" * 80)
+        print(f"Mean Error: {analysis['mean_error']:.4f}")
+        print(f"Median Error: {analysis['median_error']:.4f}")
+        print(f"Std Dev of Errors: {analysis['std_error']:.4f}")
+        print(f"Mean Absolute Error: {analysis['mean_abs_error']:.4f}")
+        print(f"Median Absolute Error: {analysis['median_abs_error']:.4f}")
+        print(f"Max Over-prediction: {analysis['max_overpredict']:.4f}")
+        print(f"Max Under-prediction: {analysis['max_underpredict']:.4f}")
+        print(f"Max Absolute Error: {analysis['max_abs_error']:.4f}")
+        
+        # Create visualizations
+        fig, axes = plt.subplots(2, 2, figsize=(14, 10))
+        
+        # Plot 1: Error distribution
+        axes[0, 0].hist(errors, bins=50, edgecolor='black', alpha=0.7)
+        axes[0, 0].axvline(x=0, color='r', linestyle='--', linewidth=2)
+        axes[0, 0].set_xlabel('Prediction Error (Actual - Predicted)')
+        axes[0, 0].set_ylabel('Frequency')
+        axes[0, 0].set_title('Error Distribution')
+        axes[0, 0].grid(True, alpha=0.3)
+        
+        # Plot 2: Residual plot
+        axes[0, 1].scatter(y_pred, errors, alpha=0.5)
+        axes[0, 1].axhline(y=0, color='r', linestyle='--', linewidth=2)
+        axes[0, 1].set_xlabel('Predicted Value')
+        axes[0, 1].set_ylabel('Residual (Actual - Predicted)')
+        axes[0, 1].set_title('Residual Plot')
+        axes[0, 1].grid(True, alpha=0.3)
+        
+        # Plot 3: Absolute error distribution
+        axes[1, 0].hist(abs_errors, bins=50, edgecolor='black', alpha=0.7, color='orange')
+        axes[1, 0].set_xlabel('Absolute Error')
+        axes[1, 0].set_ylabel('Frequency')
+        axes[1, 0].set_title('Absolute Error Distribution')
+        axes[1, 0].grid(True, alpha=0.3)
+        
+        # Plot 4: Q-Q plot for error normality
+        from scipy import stats
+        stats.probplot(errors, dist="norm", plot=axes[1, 1])
+        axes[1, 1].set_title('Q-Q Plot (Error Normality Check)')
+        axes[1, 1].grid(True, alpha=0.3)
+        
+        plt.tight_layout()
+        plt.show()
+        
+        return analysis
     
     def predict_new(self, X_new: pd.DataFrame) -> np.ndarray:
         """
