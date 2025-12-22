@@ -61,7 +61,6 @@ class FPL_League_Data_Scraper:
                 try:
                     for x in range(0,15):
                         #picks
-                        # print("Requesting...... ",xid,"GW "+str(gw),"Pick "+str(x+1))
                         row=data_gw["picks"][x]
 
                         name=list(self.member_ids.keys())[list(self.member_ids.values()).index(xid)]
@@ -85,9 +84,46 @@ class FPL_League_Data_Scraper:
         picksdf = pd.DataFrame(p, columns=pcols)
         picksdf['season']=self.season
         return picksdf
+
+    def gw_summary_from_ids(self):
+        """Fetch gameweek summary data for all members and merge with chips"""
+        summary_data = []
+        
+        for name, xid in self.member_ids.items():
+            try:
+                # Fetch history data for this member
+                history_url = f"https://fantasy.premierleague.com/api/entry/{xid}/history/"
+                response = requests.get(history_url)
+                history_data = json.loads(response.text)
+                
+                # Create a dict mapping event to chip name for quick lookup
+                chip_dict = {}
+                for chip in history_data.get('chips', []):
+                    chip_dict[chip['event']] = chip['name']
+                
+                # Extract current season gameweek data
+                for gw_data in history_data['current']:
+                    row = gw_data.copy()
+                    row['member'] = name
+                    row['memberid'] = xid
+                    row['chip'] = chip_dict.get(gw_data['event'], None)
+                    summary_data.append(row)
+                
+                print(f"Fetched history for {name} (ID: {xid})")
+                
+            except Exception as e:
+                print(f"Error fetching history for {name} (ID: {xid}): {e}")
+                continue
+        
+        # Create DataFrame
+        summary = pd.DataFrame(summary_data)
+        summary['season'] = self.season
+        
+        return summary
     
     def scrape_picks(self):
         self.get_json_from_url()
         self.make_ids()
+        membergw_summary = self.gw_summary_from_ids()
         picksdf = self.dataframe_from_ids()
-        return picksdf
+        return picksdf, membergw_summary

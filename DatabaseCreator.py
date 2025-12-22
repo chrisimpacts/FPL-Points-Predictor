@@ -46,7 +46,7 @@ class DatabaseCreator:
     def create_staging_table_sql_from_df(self,
         df: pd.DataFrame, 
         table_name: str, 
-        unlogged: bool = True,
+        unlogged: bool = False,
         overrides: dict = None
     ) -> str:
         """
