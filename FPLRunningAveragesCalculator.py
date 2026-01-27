@@ -109,7 +109,7 @@ class FPLRunningAveragesCalculator:
             """CASE WHEN minutes > 0 THEN (defensive_contribution / minutes * 90.0) ELSE 0 END AS defensive_contribution_per90""",
             """CASE WHEN minutes > 0 THEN (recoveries / minutes * 90.0) ELSE 0 END AS recoveries_per90""",
             """CASE WHEN minutes > 0 THEN (tackles / minutes * 90.0) ELSE 0 END AS tackles_per90""",
-            'team_elo - opp_team_elo AS elo_diff'
+            """team_elo - opp_team_elo AS elo_diff"""
         ]
     
     def _build_interaction_features(self, interaction_pairs, window_sizes, 
