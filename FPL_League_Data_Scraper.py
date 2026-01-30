@@ -17,19 +17,21 @@ class FPL_League_Data_Scraper:
         print("Data fetched, league name: ", self.league_name)
         return self.league_data, self.league_name
 
-    #Use league data to return a dict of names & entry ids
+    #Use league data to return a dict of entry ids to names (handles duplicates)
     def make_ids(self):
         self.member_ids={}
+        self.id_to_name = {}  # New: maps entry ID to name
         for member in self.league_data['standings']['results']:
             name=member.get('player_name')
             mid=member.get('entry')
-            self.member_ids[name]=mid
+            self.id_to_name[mid] = name
+            self.member_ids[name]=mid  # Keep for backward compatibility (will have last occurrence)
         return self.member_ids
 
     #Use first value in member_ids to find the max gameweek that data is available for
     #Get data1
     def get_first_member_data(self):
-        self.first_xid=list(self.member_ids.values())[0]
+        self.first_xid=list(self.id_to_name.keys())[0]
         gw=1
         get_first=requests.get("https://fantasy.premierleague.com/api/entry/"+str(self.first_xid)+"/event/"+str(gw)+"/picks/")
         data_first=json.loads(get_first.text)
@@ -54,7 +56,7 @@ class FPL_League_Data_Scraper:
         cols=list(data_for_columns["picks"][0].keys())
         p=[]
 
-        for xid in self.member_ids.values():
+        for xid in self.id_to_name.keys():  # Changed: iterate over all entry IDs
             for gw in range(1,mgw):    
                 get_gw=requests.get("https://fantasy.premierleague.com/api/entry/"+str(xid)+"/event/"+str(gw)+"/picks/")
                 data_gw=json.loads(get_gw.text)
@@ -63,7 +65,7 @@ class FPL_League_Data_Scraper:
                         #picks
                         row=data_gw["picks"][x]
 
-                        name=list(self.member_ids.keys())[list(self.member_ids.values()).index(xid)]
+                        name=self.id_to_name[xid]  # Changed: direct lookup
                         selected_row = [name,xid,gw,x+1]
 
                         for i in cols:
@@ -73,7 +75,7 @@ class FPL_League_Data_Scraper:
 
                         print(xid,name,"GW "+str(gw),"Pick "+str(x+1))
                 except KeyError as e:
-                    name = list(self.member_ids.keys())[list(self.member_ids.values()).index(xid)]
+                    name = self.id_to_name[xid]  # Changed: direct lookup
                     print("GW Could not be found!",xid,name,"GW "+str(gw))
                     print(e)
                     continue
@@ -89,7 +91,7 @@ class FPL_League_Data_Scraper:
         """Fetch gameweek summary data for all members and merge with chips"""
         summary_data = []
         
-        for name, xid in self.member_ids.items():
+        for xid, name in self.id_to_name.items():  # Changed: iterate over all entry IDs
             try:
                 # Fetch history data for this member
                 history_url = f"https://fantasy.premierleague.com/api/entry/{xid}/history/"
