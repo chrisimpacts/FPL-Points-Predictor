@@ -209,7 +209,7 @@ class FPLDataManager:
             left_on=['event', 'team'],
             right_on=['event', 'team'],
             suffixes=('', '_fixtures'),
-            validate='many_to_one'
+            # validate='many_to_one' # 'many_to_one' doesn't work in double gameweeks
         )
         
         return current_year_players_allfixtures
