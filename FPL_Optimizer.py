@@ -306,3 +306,26 @@ class FPLOptimizer:
             raise ValueError("No optimization has been run yet. Call optimize() first.")
         
         return self.starting_xi.copy()
+
+    def calculate_bench_boost_xpoints(self):
+        """
+        Calculate the expected points gained by playing the Bench Boost chip."""
+        if self.selected_squad is None or self.starting_xi is None:
+            raise ValueError("No optimization has been run yet. Call optimize() first.")
+ 
+        # Identify bench players as squad members not in the starting XI
+        starting_indices = set(self.starting_xi.index)
+        bench_players = self.selected_squad[
+            ~self.selected_squad.index.isin(starting_indices)
+        ].copy()
+ 
+        bench_xpoints    = bench_players[self.cols['xpoints']].sum()
+        already_counted  = self.bench_weight * bench_xpoints
+        bench_boost_gain = (1 - self.bench_weight) * bench_xpoints
+
+        return {
+            'bench_players'   : bench_players,
+            'bench_xpoints'   : bench_xpoints,
+            'already_counted' : already_counted,
+            'bench_boost_gain': bench_boost_gain,
+        }
