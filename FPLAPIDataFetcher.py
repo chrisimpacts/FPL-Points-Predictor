@@ -107,7 +107,7 @@ class FPLAPIDataFetcher:
         player_ids = set(self.player['id'])
         max_player = len(player_ids)
         
-        for element_id in player_ids:
+        for element_id in list(player_ids):#[:5]: # Limit to first 5 players for testing
             try:
                 history = self.fetch_player_history(element_id)
                 season_data_list.extend(history)

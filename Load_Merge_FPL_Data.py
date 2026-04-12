@@ -176,7 +176,8 @@ class FPLDataManager:
     def _create_player_fixture_projections(self, loader: FPLDataLoader, 
                                           fpl_data: pd.DataFrame, 
                                           all_fixtures: pd.DataFrame,
-                                          fixtures_with_elo: pd.DataFrame) -> pd.DataFrame:
+                                          fixtures_with_elo: pd.DataFrame
+                                          ) -> pd.DataFrame:
         """
         Create player-fixture combinations for rest of current season projections.
         
@@ -189,29 +190,34 @@ class FPLDataManager:
         Returns:
             Dataframe with all player-fixture combinations
         """
-        # Get unique players and cross merge with all gameweek events
         playerfix = fpl_data[['player_name_id', 'team', 'position', 'season']].drop_duplicates()
-        events = fixtures_with_elo['event'].drop_duplicates()
-        playerfix = playerfix.merge(events, how='cross')
-        
-        # Merge with actual gameweek data
+
+        # fixture ID is 'fixture_id' in all_fixtures (renamed by load_fixtures)
+        # and 'fixture' in fpl_data (direct from FPL API history)
+        team_fixtures = all_fixtures[['event', 'team', 'fixture_id']].drop_duplicates()
+        playerfix = playerfix.merge(team_fixtures, on='team', how='inner')
+
         all_playerfix = playerfix.merge(
             fpl_data,
-            left_on=['player_name_id', 'event'],
-            right_on=['player_name_id', 'gw'],
+            left_on=['player_name_id', 'event', 'fixture_id'],
+            right_on=['player_name_id', 'gw', 'fixture'],
             suffixes=('', '_gw'),
             how='left'
         )
-        
-        # Merge with fixtures
+
         current_year_players_allfixtures = all_playerfix.merge(
             all_fixtures,
-            left_on=['event', 'team'],
-            right_on=['event', 'team'],
+            on=['event', 'team', 'fixture_id'],
             suffixes=('', '_fixtures'),
-            # validate='many_to_one' # 'many_to_one' doesn't work in double gameweeks
         )
-        
+
+        # make sure fixture column is filled, so that deduplication doesn't remove double gameweeks
+        current_year_players_allfixtures['fixture'] = (
+            current_year_players_allfixtures['fixture']
+            .fillna(current_year_players_allfixtures['fixture_id'])
+            .astype(int)
+        )
+
         return current_year_players_allfixtures
     
     def load_all_seasons(self) -> pd.DataFrame:
@@ -255,13 +261,13 @@ class FPLDataManager:
         
         # Combine all merged data
         all_merged = pd.concat(list(self.merged_data.values()), axis=0)
-        
+
         # Add rest-of-season projections
         df_rest_of_current_season = pd.concat([all_merged, current_year_players_allfixtures], axis=0)
         df_rest_of_current_season = df_rest_of_current_season.drop_duplicates(
-            subset=['player_name_id', 'season', 'gw', 'event']
+            subset=['player_name_id', 'season','event', 'fixture_id']
         )
-        
+
         return df_rest_of_current_season
     
     def get_season_data(self, season: int) -> Optional[pd.DataFrame]:

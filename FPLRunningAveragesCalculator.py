@@ -15,7 +15,7 @@ class FPLRunningAveragesCalculator:
         """
         self.db_creator = db_creator
         self.base_fields = [
-            'player_name_id', 'element', 'season', 'value', 'event', 'minutes', 'total_points',
+            'player_name_id', 'element', 'season', 'value', 'event', 'fixture','minutes', 'total_points',
             'team_elo', 'opp_team_elo', 'position', 'goals_scored', 'bonus',
             'bps', 'clean_sheets', 'goals_conceded', 'was_home',
             'expected_goals', 'expected_assists', 'expected_goal_involvements',
@@ -155,7 +155,7 @@ class FPLRunningAveragesCalculator:
                     AVG(CASE WHEN total_points IS NOT NULL 
                         THEN {interaction_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
-                        ORDER BY season ASC, event ASC
+                        ORDER BY season ASC, event ASC, fixture ASC
                         ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
                     )
                 END AS {avg_name}""")
@@ -168,7 +168,7 @@ class FPLRunningAveragesCalculator:
                     AVG(CASE WHEN total_points IS NOT NULL 
                         THEN {raw_interaction_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
-                        ORDER BY season ASC, event ASC
+                        ORDER BY season ASC, event ASC, fixture ASC
                         ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
                     )
                 END AS {avg_name_raw}""")
@@ -190,7 +190,7 @@ class FPLRunningAveragesCalculator:
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {interaction_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
-                        ORDER BY season ASC, event ASC
+                        ORDER BY season ASC, event ASC, fixture ASC
                         ROWS BETWEEN {window} PRECEDING AND 1 PRECEDING
                     )
                 END AS {avg_name}""")
@@ -203,7 +203,7 @@ class FPLRunningAveragesCalculator:
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {raw_interaction_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
-                        ORDER BY season ASC, event ASC
+                        ORDER BY season ASC, event ASC, fixture ASC
                         ROWS BETWEEN {window} PRECEDING AND 1 PRECEDING
                     )
                 END AS {avg_name_raw}""")
@@ -219,7 +219,7 @@ class FPLRunningAveragesCalculator:
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {elo_interaction_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
-                        ORDER BY season ASC, event ASC
+                        ORDER BY season ASC, event ASC, fixture ASC
                         ROWS BETWEEN {window} PRECEDING AND 1 PRECEDING
                     )
                 END AS {avg_name_elo}""")
@@ -261,7 +261,7 @@ class FPLRunningAveragesCalculator:
                 AVG(CASE WHEN total_points IS NOT NULL 
                     THEN {metric} ELSE NULL END) OVER (
                     PARTITION BY player_name_id
-                    ORDER BY season ASC, event ASC
+                    ORDER BY season ASC, event ASC, fixture ASC
                     ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
                 )
             END AS {avg_name}""")
@@ -274,7 +274,7 @@ class FPLRunningAveragesCalculator:
                     AVG(CASE WHEN total_points IS NOT NULL 
                         THEN {metric_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
-                        ORDER BY season ASC, event ASC
+                        ORDER BY season ASC, event ASC, fixture ASC
                         ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
                     )
                 END AS {avg_name_per90}""")
@@ -287,7 +287,7 @@ class FPLRunningAveragesCalculator:
                         AVG(CASE WHEN total_points IS NOT NULL 
                             THEN {squared_expr} ELSE NULL END) OVER (
                             PARTITION BY player_name_id
-                            ORDER BY season ASC, event ASC
+                            ORDER BY season ASC, event ASC, fixture ASC
                             ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
                         )
                     END AS {avg_name_squared}""")
@@ -308,7 +308,7 @@ class FPLRunningAveragesCalculator:
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {metric} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
-                        ORDER BY season ASC, event ASC
+                        ORDER BY season ASC, event ASC, fixture ASC
                         ROWS BETWEEN {window} PRECEDING AND 1 PRECEDING
                     )
                 END AS {avg_name}""")
@@ -322,7 +322,7 @@ class FPLRunningAveragesCalculator:
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {metric_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
-                        ORDER BY season ASC, event ASC
+                        ORDER BY season ASC, event ASC, fixture ASC
                         ROWS BETWEEN {window} PRECEDING AND 1 PRECEDING
                     )
                 END AS {avg_name_per90}""")
@@ -335,7 +335,7 @@ class FPLRunningAveragesCalculator:
                         AVG(CASE WHEN total_points IS NOT NULL
                             THEN {squared_expr} ELSE NULL END) OVER (
                             PARTITION BY player_name_id
-                            ORDER BY season ASC, event ASC
+                            ORDER BY season ASC, event ASC, fixture ASC
                             ROWS BETWEEN {window} PRECEDING AND 1 PRECEDING
                         )
                     END AS {avg_name_squared}""")
@@ -349,7 +349,7 @@ class FPLRunningAveragesCalculator:
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {elo_adjusted_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
-                        ORDER BY season ASC, event ASC
+                        ORDER BY season ASC, event ASC, fixture ASC
                         ROWS BETWEEN {window} PRECEDING AND 1 PRECEDING
                     )
                 END AS {avg_name_elo}""")
@@ -376,7 +376,7 @@ class FPLRunningAveragesCalculator:
                         AVG(CASE WHEN total_points IS NOT NULL
                             THEN {squared_elo_expr} ELSE NULL END) OVER (
                             PARTITION BY player_name_id
-                            ORDER BY season ASC, event ASC
+                            ORDER BY season ASC, event ASC, fixture ASC
                             ROWS BETWEEN {window} PRECEDING AND 1 PRECEDING
                         )
                     END AS {avg_name_elo_squared}""")
@@ -409,5 +409,5 @@ class FPLRunningAveragesCalculator:
             FROM base
         ) subquery
         WHERE player_season_minutes_total > 0
-        ORDER BY player_name_id ASC, season ASC, event ASC
+        ORDER BY player_name_id ASC, season ASC, event ASC, fixture ASC
         """
