@@ -16,7 +16,7 @@ class FPLRunningAveragesCalculator:
         self.db_creator = db_creator
         self.base_fields = [
             'player_name_id', 'element', 'season', 'value', 'event', 'fixture','minutes', 'total_points',
-            'team_elo', 'opp_team_elo', 'position', 'goals_scored', 'bonus',
+            'team_elo', 'opp_team_elo', 'position', 'goals_scored', 'assists', 'bonus',
             'bps', 'clean_sheets', 'goals_conceded', 'was_home',
             'expected_goals', 'expected_assists', 'expected_goal_involvements',
             'expected_goals_conceded', 'team_name', 'opp_team_name', 
