@@ -1,76 +1,91 @@
 import numpy as np
-import pandas as pd
 from scipy.stats import poisson
-
 
 class FPLStatOverperformanceAnalyzer:
     """
-    Tests whether a player's actual stat (goals, assists, etc.) overperforms
-    its expected counterpart (xG, xA) beyond Poisson randomness, and returns
-    a shrinkage-adjusted multiplier for future predictions.
+    Analyzes player performance using arrays of match data.
+    Adjusts credibility based on the total sum of minutes played.
     """
 
-    def __init__(self, actual, expected, alpha=0.05):
-        self.actual   = np.asarray(actual,   dtype=float)
-        self.expected = np.asarray(expected, dtype=float)
-        self.alpha    = alpha
-        self.total_actual   = self.actual.sum()
-        self.total_expected = self.expected.sum()
+    def __init__(self, actual_array, expected_array, minutes_array, alpha=0.05):
+        # Convert to numpy arrays to ensure vector operations work
+        self.actual = np.asarray(actual_array, dtype=float)
+        self.expected = np.asarray(expected_array, dtype=float)
+        self.minutes = np.asarray(minutes_array, dtype=float)
+        
+        self.alpha = alpha
+        
+        # Calculate totals for the statistical tests
+        self.total_actual = np.nansum(self.actual)
+        self.total_expected = np.nansum(self.expected)
+        self.total_minutes = np.nansum(self.minutes)
 
     def _is_significant(self):
         if self.total_expected <= 0:
             return False
+        # Poisson survival function: P(X >= total_actual)
         p = poisson.sf(self.total_actual - 1, mu=self.total_expected)
         return p < self.alpha
 
-    def adjustment_factor(self, prior_weight=0.3, only_if_significant=True):
+    def adjustment_factor(self, taper_k_90s=10, only_if_significant=True):
         """
-        Empirical Bayes factor shrunk toward 1.0.
-        Returns 1.0 when there is insufficient data or the test is not significant.
+        taper_k_90s : The number of 90s played to reach 50% credibility.
         """
         if self.total_expected <= 0:
             return 1.0
+        
         if only_if_significant and not self._is_significant():
             return 1.0
+
         observed_rate = self.total_actual / self.total_expected
-        return prior_weight * 1.0 + (1.0 - prior_weight) * observed_rate
+        
+        # Calculate credibility based on '90s' played
+        n_90s = self.total_minutes / 90.0
+        credibility = n_90s / (n_90s + taper_k_90s)
+        
+        return (credibility * observed_rate) + ((1.0 - credibility) * 1.0)
 
 
 def build_player_adjustments(
     df,
     stat_pairs,
-    prior_weight=0.3,
+    taper_k_90s=15.0, 
     only_if_significant=True,
     min_xstat=2.0,
-    min_games=10,
 ):
     """
-    Returns {player_name_id: {key: factor}} for each stat pair.
-
-    stat_pairs: list of (actual_col, expected_col, output_key), e.g.
-        [('goals_scored', 'expected_goals', 'xg'),
-         ('assists',      'expected_assists', 'xa')]
+    df: DataFrame containing player match rows.
+    stat_pairs: list of (actual_col, expected_col, key)
+    taper_k_90s: number of 90s to reach 50% credibility (50% observed, 50% prior)
+    only_if_significant: if True, only apply adjustments if overperformance is statistically significant
+    min_xstat: minimum cumulative xStat to consider applying adjustments (prevents overfitting on small samples)
     """
-    played = df[df["minutes"] > 0]
+    # Only consider games where the player actually stepped on the pitch
+    played = df[df["minutes"] > 0].copy()
     result = {}
 
-    for player, grp in played.groupby("player_name_id"):
-        factors = {}
+    for player_id, grp in played.groupby("player_name_id"):
+        player_factors = {}
+        
         for actual_col, expected_col, key in stat_pairs:
-            factors[key] = 1.0
-            if len(grp) < min_games:
-                continue
+            # Check if cumulative xStat meets the floor
             if grp[expected_col].sum() < min_xstat:
+                player_factors[key] = 1.0
                 continue
+            
+            # Pass the arrays (Series) directly to the Analyzer
             analyzer = FPLStatOverperformanceAnalyzer(
-                actual=grp[actual_col].fillna(0).values,
-                expected=grp[expected_col].fillna(0).values,
+                actual_array=grp[actual_col],
+                expected_array=grp[expected_col],
+                minutes_array=grp["minutes"]
             )
-            factors[key] = analyzer.adjustment_factor(
-                prior_weight=prior_weight,
-                only_if_significant=only_if_significant,
+            
+            player_factors[key] = analyzer.adjustment_factor(
+                taper_k_90s=taper_k_90s,
+                only_if_significant=only_if_significant
             )
-        result[player] = factors
+            
+        result[player_id] = player_factors
 
     return result
 
