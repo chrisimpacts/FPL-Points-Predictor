@@ -64,7 +64,7 @@ class FPLPredictor:
         self.max_nan_pct = max_nan_pct
         
         # Default columns to drop
-        self.default_columns_to_drop = ['event', 'season', 'element', 'value', 'player_name_id', 'position', 'minutes',
+        self.default_columns_to_drop = ['event','fixture', 'season', 'element', 'value', 'player_name_id', 'position', 'minutes',
             'total_points', 'points_per90', 'expected_goals_per90', 'expected_assists_per90', 'expected_goals_conceded_per90',
             'saves_per90', 'bps_per90', 'bonus_per90', 'cbi_per90', 'defensive_contribution_per90',
             'player_season_points_per90',

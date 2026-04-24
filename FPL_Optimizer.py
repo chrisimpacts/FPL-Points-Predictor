@@ -293,9 +293,9 @@ class FPLOptimizer:
         
         result = self.selected_squad.copy()
         
-        if include_starter_flag and 'Starter' not in result.columns:
+        if include_starter_flag:
             result['Starter'] = result.index.map(
-                lambda idx: '✅' if self.start_vars[idx].varValue == 1 else '🪑'
+                lambda idx: 1 if self.start_vars[idx].varValue == 1 else 0
             )
         
         return result
