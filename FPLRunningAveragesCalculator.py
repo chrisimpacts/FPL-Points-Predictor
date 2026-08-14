@@ -4,7 +4,7 @@ class FPLRunningAveragesCalculator:
     optional normalization and advanced feature engineering.
     """
     
-    def __init__(self, db_creator):
+    def __init__(self, db_creator, current_season=20262027):
         """
         Initialize the calculator with a database connection.
         
@@ -14,6 +14,7 @@ class FPLRunningAveragesCalculator:
             Database connection object with a run_sql method
         """
         self.db_creator = db_creator
+        self.current_season = current_season
         self.base_fields = [
             'player_name_id', 'element', 'season', 'value', 'event', 'fixture','minutes', 'total_points',
             'team_elo', 'opp_team_elo', 'position', 'goals_scored', 'assists', 'bonus',
@@ -151,7 +152,7 @@ class FPLRunningAveragesCalculator:
             interaction_expr = f"({metric1_per90}) * ({metric2_per90})"
             avg_name = f"{interaction_name}_p90_at"
             features.append(f"""
-                CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+                CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                     AVG(CASE WHEN total_points IS NOT NULL 
                         THEN {interaction_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
@@ -164,7 +165,7 @@ class FPLRunningAveragesCalculator:
             raw_interaction_expr = f"{metric1} * {metric2}"
             avg_name_raw = f"{interaction_name}_at"
             features.append(f"""
-                CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+                CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                     AVG(CASE WHEN total_points IS NOT NULL 
                         THEN {raw_interaction_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
@@ -186,7 +187,7 @@ class FPLRunningAveragesCalculator:
             interaction_expr = f"({metric1_per90}) * ({metric2_per90})"
             avg_name = f"{interaction_name}_p90_{window}"
             features.append(f"""
-                CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+                CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {interaction_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
@@ -199,7 +200,7 @@ class FPLRunningAveragesCalculator:
             raw_interaction_expr = f"{metric1} * {metric2}"
             avg_name_raw = f"{interaction_name}_{window}"
             features.append(f"""
-                CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+                CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {raw_interaction_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
@@ -215,7 +216,7 @@ class FPLRunningAveragesCalculator:
             elo_interaction_expr = f"({metric1_elo_per90}) * ({metric2_elo_per90})"
             avg_name_elo = f"{interaction_name}_elo_p90_{window}"
             features.append(f"""
-                CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+                CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {elo_interaction_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
@@ -257,7 +258,7 @@ class FPLRunningAveragesCalculator:
         
         avg_name = f"{short_metric}_at"
         features.append(f"""
-            CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+            CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                 AVG(CASE WHEN total_points IS NOT NULL 
                     THEN {metric} ELSE NULL END) OVER (
                     PARTITION BY player_name_id
@@ -270,7 +271,7 @@ class FPLRunningAveragesCalculator:
             metric_expr = f"CASE WHEN minutes > 0 THEN ({metric} / minutes * 90.0) ELSE 0 END"
             avg_name_per90 = f"{short_metric}_p90_at"
             features.append(f"""
-                CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+                CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                     AVG(CASE WHEN total_points IS NOT NULL 
                         THEN {metric_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
@@ -283,7 +284,7 @@ class FPLRunningAveragesCalculator:
                 squared_expr = f"CASE WHEN minutes > 0 THEN POWER(({metric} / minutes * 90.0), 2) ELSE NULL END"
                 avg_name_squared = f"{short_metric}_p90sq_at"
                 features.append(f"""
-                    CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+                    CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                         AVG(CASE WHEN total_points IS NOT NULL 
                             THEN {squared_expr} ELSE NULL END) OVER (
                             PARTITION BY player_name_id
@@ -304,7 +305,7 @@ class FPLRunningAveragesCalculator:
         if include_raw:
             avg_name = f"{short_metric}_{window}"
             features.append(f"""
-                CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+                CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {metric} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
@@ -318,7 +319,7 @@ class FPLRunningAveragesCalculator:
             metric_expr = f"CASE WHEN minutes > 0 THEN ({metric} / minutes * 90.0) ELSE 0 END"
             avg_name_per90 = f"{short_metric}_p90_{window}"
             features.append(f"""
-                CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+                CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {metric_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
@@ -331,7 +332,7 @@ class FPLRunningAveragesCalculator:
                 squared_expr = f"CASE WHEN minutes > 0 THEN POWER(({metric} / minutes * 90.0), 2) ELSE NULL END"
                 avg_name_squared = f"{short_metric}_p90sq_{window}"
                 features.append(f"""
-                    CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+                    CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                         AVG(CASE WHEN total_points IS NOT NULL
                             THEN {squared_expr} ELSE NULL END) OVER (
                             PARTITION BY player_name_id
@@ -345,7 +346,7 @@ class FPLRunningAveragesCalculator:
             elo_adjusted_expr = f"{metric} / {elo_difficulty_multiplier}"
             avg_name_elo = f"{short_metric}_elo_{window}"
             features.append(f"""
-                CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+                CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {elo_adjusted_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
@@ -359,7 +360,7 @@ class FPLRunningAveragesCalculator:
             elo_per90_expr = f"CASE WHEN minutes > 0 THEN (({metric} / minutes * 90.0) / {elo_difficulty_multiplier}) ELSE 0 END"
             avg_name_elo_per90 = f"{short_metric}_elo_p90_{window}"
             features.append(f"""
-                CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+                CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {elo_per90_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
@@ -372,7 +373,7 @@ class FPLRunningAveragesCalculator:
                 squared_elo_expr = f"CASE WHEN minutes > 0 THEN POWER((({metric} / minutes * 90.0) / {elo_difficulty_multiplier}), 2) ELSE NULL END"
                 avg_name_elo_squared = f"{short_metric}_elo_p90sq_{window}"
                 features.append(f"""
-                    CASE WHEN (season < 20252026 OR (season = 20252026 AND event <= latest_completed_gw+1)) THEN
+                    CASE WHEN (season < {self.current_season} OR (season = {self.current_season} AND event <= latest_completed_gw+1)) THEN
                         AVG(CASE WHEN total_points IS NOT NULL
                             THEN {squared_elo_expr} ELSE NULL END) OVER (
                             PARTITION BY player_name_id
@@ -392,7 +393,7 @@ class FPLRunningAveragesCalculator:
             SELECT 
                 MAX(event) AS latest_completed_gw
             FROM playergw
-            WHERE season = 20252026 AND total_points IS NOT NULL
+            WHERE season = {self.current_season} AND total_points IS NOT NULL
         ),
         base AS (
             SELECT 
@@ -408,6 +409,7 @@ class FPLRunningAveragesCalculator:
                 {select_clause}
             FROM base
         ) subquery
-        WHERE player_season_minutes_total > 0
+        
         ORDER BY player_name_id ASC, season ASC, event ASC, fixture ASC
         """
+        # WHERE player_season_minutes_total > 0 # remove this until mid-season to avoid losing players with no minutes yet

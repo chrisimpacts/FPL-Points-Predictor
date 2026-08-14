@@ -107,10 +107,11 @@ class FPLAPIDataFetcher:
         player_ids = set(self.player['id'])
         max_player = len(player_ids)
         
-        for element_id in list(player_ids):#[:5]: # Limit to first 5 players for testing
+        for element_id in list(player_ids): #[:5]: # Limit to first 5 players for testing
             try:
                 history = self.fetch_player_history(element_id)
-                season_data_list.extend(history)
+                if history:
+                    season_data_list.extend(history)
                 
                 if verbose:
                     print(f"Loaded data for element_id: {element_id}/{max_player}")
@@ -119,8 +120,23 @@ class FPLAPIDataFetcher:
                 print(f"Error loading data for element_id {element_id}: {e}")
                 continue
         
-        # Create dataframe and merge with player data
-        self.season_data = pd.DataFrame.from_dict(season_data_list)
+        # Create dataframe: Check if we have data to avoid KeyError during merge before season has started
+        if not season_data_list:
+            # Initialize with all expected FPL API history columns
+            expected_columns = [
+                'element', 'fixture', 'opponent_team', 'total_points', 'was_home', 
+                'kickoff_time', 'team_h_score', 'team_a_score', 'round', 'minutes', 
+                'goals_scored', 'assists', 'clean_sheets', 'goals_conceded', 
+                'own_goals', 'penalties_saved', 'penalties_missed', 'yellow_cards', 
+                'red_cards', 'saves', 'bonus', 'bps', 'influence', 'creativity', 
+                'threat', 'ict_index', 'starts', 'expected_goals', 'expected_assists', 
+                'expected_goal_involvements', 'expected_goals_conceded', 'value', 
+                'transfers_balance', 'selected', 'transfers_in', 'transfers_out'
+            ]
+            self.season_data = pd.DataFrame(columns=expected_columns)
+        else:
+            self.season_data = pd.DataFrame.from_dict(season_data_list)
+            
         self.season_data = self.season_data.merge(
             self.player, 
             left_on='element', 

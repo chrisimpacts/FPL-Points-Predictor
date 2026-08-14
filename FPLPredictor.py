@@ -153,13 +153,15 @@ class FPLPredictor:
         df_filtered = self.data[self.data['position'].isin(self.positions)]
         
         # Define features
-        self.features = df_filtered.columns.drop(self.columns_to_drop).tolist()
+        self.features = [col for col in df_filtered.columns if col not in set(self.columns_to_drop)]
 
         if self.max_nan_pct is not None:
             # Calculate NaN percentage for each feature
             nan_pct = (df_filtered[self.features].isna().sum() / len(df_filtered) * 100)
             # Keep only features below threshold
             self.features = nan_pct[nan_pct <= self.max_nan_pct].index.tolist()
+            excluded_features = nan_pct[nan_pct > self.max_nan_pct].index.tolist()
+            print(f"Excluded features (>{self.max_nan_pct}% NaN): {excluded_features}")
         
         # Remove rows with missing values
         df_clean = df_filtered[self.features + [self.target]].dropna()
@@ -185,7 +187,7 @@ class FPLPredictor:
         df_filtered = self.data[self.data['position'].isin(self.positions)]
         
         # Get potential features (before NaN filtering)
-        potential_features = df_filtered.columns.drop(self.columns_to_drop).tolist()
+        potential_features = [col for col in df_filtered.columns if col not in self.columns_to_drop]
         
         # Calculate NaN statistics
         nan_counts = df_filtered[potential_features].isna().sum()

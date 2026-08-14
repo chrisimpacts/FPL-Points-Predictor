@@ -226,6 +226,28 @@ class FPLDataLoader:
         18: "Spurs",
         19: "West Ham",
         20: "Wolves",
+    },
+    20262027: {
+        1: "Arsenal",
+        2: "Aston Villa",
+        3: "Bournemouth",
+        4: "Brentford",
+        5: "Brighton",
+        6: "Chelsea",
+        7: "Coventry City",
+        8: "Crystal Palace",
+        9: "Everton",
+        10: "Fulham",
+        11: "Hull City",
+        12: "Ipswich Town",
+        13: "Leeds",
+        14: "Liverpool",
+        15: "Man City",
+        16: "Man Utd",
+        17: "Newcastle",
+        18: "Nott'm Forest",
+        19: "Spurs",
+        20: "Sunderland"
     }
 }
     rename_gw_data_dict = {
@@ -350,17 +372,17 @@ class FPLDataLoader:
         """Get the current global ELO ratings dictionary."""
         return cls._global_elo_ratings.copy()
 
-    def team_name(self, row, teams_by_season):
-        if row['was_home']:
-            return teams_by_season[row['fixture_season']].get(row['team_h'])
-        else:
-            return teams_by_season[row['fixture_season']].get(row['team_a'])
+    # def team_name(self, row, teams_by_season):
+    #     if row['was_home']:
+    #         return teams_by_season[row['fixture_season']].get(row['team_h'])
+    #     else:
+    #         return teams_by_season[row['fixture_season']].get(row['team_a'])
     
-    def opp_team_name(self, row, teams_by_season):
-        if row['was_home']:
-            return teams_by_season[row['fixture_season']].get(row['team_a'])
-        else:
-            return teams_by_season[row['fixture_season']].get(row['team_h'])
+    # def opp_team_name(self, row, teams_by_season):
+    #     if row['was_home']:
+    #         return teams_by_season[row['fixture_season']].get(row['team_a'])
+    #     else:
+    #         return teams_by_season[row['fixture_season']].get(row['team_h'])
     
     def away_team_name(self, row, teams_by_season):
         return teams_by_season[row['fixture_season']].get(row['team_a'])
@@ -377,16 +399,12 @@ class FPLDataLoader:
         if self.gw_df is not None:
             self.fpl_data = self.gw_df.copy()
             self.fpl_data['gw'] = self.fpl_data['round']  
-            #recreate player_name_id
-            self.fpl_data['player_name_id'] = self.fpl_data.apply(lambda x: f"{x['first_name']} {x['second_name']}", axis=1)     
-            #map position 1,2,3,4 to GK, DEF, MID, FWD
+            # recreate player_name_id
+            self.fpl_data['player_name_id'] = self.fpl_data.apply(lambda x: f"{x['first_name']} {x['second_name']}", axis=1)    
+            # map position 1,2,3,4 to GK, DEF, MID, FWD
             position_map = {1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD'}
             self.fpl_data['position'] = self.fpl_data['element_type'].map(position_map)
-            #get team name
-            columns_to_convert = ['expected_goals','expected_assists','expected_goal_involvements','expected_goals_conceded']
-            self.fpl_data[columns_to_convert] = self.fpl_data[columns_to_convert].apply(pd.to_numeric, errors='coerce')
-
-
+            
         elif self.gw_url:
             self.fpl_data = pd.read_csv(self.gw_url, encoding="latin1", engine="python")
         else:
@@ -394,6 +412,23 @@ class FPLDataLoader:
         
         self.fpl_data = self.fpl_data.rename(columns=self.rename_gw_data_dict)
         self.fpl_data["season"] = self.season
+        
+        # Force specific string/object columns to avoid accidental coercion
+        string_cols = ['player_name_id', 'position', 'kickoff_time']
+        for col in string_cols:
+            if col in self.fpl_data.columns:
+                self.fpl_data[col] = self.fpl_data[col].astype(str)
+
+        # Safely convert specific known numeric columns to ensure consistent dtype representation 
+        numeric_cols = ['element', 'value', 'event', 'fixture', 'total_points', 'minutes',
+                        'goals_scored', 'assists', 'bonus', 'bps', 'clean_sheets', 'goals_conceded', 'saves',
+                        'expected_goals', 'expected_assists', 'expected_goal_involvements', 'expected_goals_conceded',
+                        'starts', 'cbi', 'defensive_contribution', 'recoveries', 'tackles', 'team_h_score', 'team_a_score', 'round']
+        
+        existing_numeric = [col for col in numeric_cols if col in self.fpl_data.columns]
+        for col in existing_numeric:
+             self.fpl_data[col] = pd.to_numeric(self.fpl_data[col], errors='coerce')
+
         return self.fpl_data
 
     def load_fixtures(self):
@@ -435,7 +470,7 @@ class FPLDataLoader:
             away_elo_list.append(R_away)
             
             # Only update if scores are available
-            if not np.isnan(row['fixture_team_h_score']) and not np.isnan(row['fixture_team_a_score']):
+            if not pd.isna(row['fixture_team_h_score']) and not pd.isna(row['fixture_team_a_score']):
                 home_score = row['fixture_team_h_score']
                 away_score = row['fixture_team_a_score']
                 
@@ -478,19 +513,30 @@ class FPLDataLoader:
             validate='many_to_one'
         )
         
-        self.merged_data['team_name'] = self.merged_data.apply(
-            lambda row: self.team_name(row, self.teams_by_season), axis=1
+        # 1. Grab the dictionary mapping for the current season
+        season_dict = self.teams_by_season.get(self.season, {})
+        
+        # 2. Map the team names in bulk
+        team_h_names = self.merged_data['team_h'].map(season_dict)
+        team_a_names = self.merged_data['team_a'].map(season_dict)
+        
+        # 3. Create a safe boolean mask for 'was_home'
+        was_home = self.merged_data['was_home'] == True
+        
+        # 4. Assign Team Names vectorially 
+        self.merged_data['team_name'] = np.where(was_home, team_h_names, team_a_names)
+        self.merged_data['opp_team_name'] = np.where(was_home, team_a_names, team_h_names)
+        
+        # 5. Assign ELOs vectorially
+        self.merged_data['team_elo'] = np.where(
+            was_home, 
+            self.merged_data['home_team_elo'], 
+            self.merged_data['away_team_elo']
         )
-        self.merged_data['team_elo'] = self.merged_data.apply(
-            lambda row: row["home_team_elo"] if row["was_home"] else row["away_team_elo"], 
-            axis=1
-        )
-        self.merged_data['opp_team_name'] = self.merged_data.apply(
-            lambda row: self.opp_team_name(row, self.teams_by_season), axis=1
-        )
-        self.merged_data['opp_team_elo'] = self.merged_data.apply(
-            lambda row: row["away_team_elo"] if row["was_home"] else row["home_team_elo"], 
-            axis=1
+        self.merged_data['opp_team_elo'] = np.where(
+            was_home, 
+            self.merged_data['away_team_elo'], 
+            self.merged_data['home_team_elo']
         )
         
         return self.merged_data

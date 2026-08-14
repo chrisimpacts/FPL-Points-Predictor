@@ -17,10 +17,11 @@ class FPLDataManager:
     Handles historical seasons via CSV files, 24/25 via manual merge, and 25/26 via API.
     """
     
-    def __init__(self):
+    def __init__(self, current_season: int = 20262027):
         self.seasons_data = {}
         self.fixtures_data = {}
         self.merged_data = {}
+        self.current_season = current_season
         
     def load_historical_season(self, season: int, gw_url: str, fixtures_path: str) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
@@ -89,28 +90,38 @@ class FPLDataManager:
         
         return fpl_data, fixtures_with_elo, merged
     
-    def load_2025_26_season_from_api(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def load_current_season_from_api(self, prediction_gw: int = 1) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
-        Load 2025-26 season data from FPL API.
+        Load current season data from FPL API.
+        
+        Args:
+            prediction_gw: The gameweek we are predicting for. If prediction_gw == 1, 
+                           no gameweeks have been played, so we use bootstrap data.
         
         Returns:
             Tuple of (fpl_data, fixtures, merged_data, all_fixtures_for_current_players)
         """
         # Fetch current season data from API
-        fpl_fetcher = FPLAPIDataFetcher(season=20252026)
-        seasondf2526_api = fpl_fetcher.load_season_data(verbose=True)
+        fpl_fetcher = FPLAPIDataFetcher(season=self.current_season)
+        current_seasondf_api = fpl_fetcher.load_season_data(verbose=True)
+        
+        bootstrap_players = None
+        # If prediction_gw is 1, 0 gameweeks have been played, use bootstrap data
+        if prediction_gw == 1:
+            print("Prediction GW is 1 (0 gameweeks played): fetching bootstrap player list...")
+            bootstrap_players = fpl_fetcher.get_player_data()
         
         # Fetch fixtures from API
         fixtures_url = "https://fantasy.premierleague.com/api/fixtures/"
         response = requests.get(fixtures_url)
         response.raise_for_status()
-        fix2526 = pd.DataFrame(response.json())
+        current_fix_api = pd.DataFrame(response.json())
         
         # Load using FPLDataLoader with API data
         loader = FPLDataLoader(
-            season=20252026,
-            gw_df=seasondf2526_api,
-            fixtures_df=fix2526
+            season=self.current_season,
+            gw_df=current_seasondf_api,
+            fixtures_df=current_fix_api
         )
         
         fpl_data = loader.load_fpl_data()
@@ -123,12 +134,12 @@ class FPLDataManager:
         
         # Create player-fixture combinations for rest of season
         current_year_players_allfixtures = self._create_player_fixture_projections(
-            loader, fpl_data, all_fixtures, fixtures_with_elo
+            loader, fpl_data, all_fixtures, fixtures_with_elo, bootstrap_players
         )
         
-        self.seasons_data[20252026] = fpl_data
-        self.fixtures_data[20252026] = fixtures_with_elo
-        self.merged_data[20252026] = merged
+        self.seasons_data[self.current_season] = fpl_data
+        self.fixtures_data[self.current_season] = fixtures_with_elo
+        self.merged_data[self.current_season] = merged
         
         return fpl_data, fixtures_with_elo, merged, current_year_players_allfixtures
     
@@ -176,7 +187,8 @@ class FPLDataManager:
     def _create_player_fixture_projections(self, loader: FPLDataLoader, 
                                           fpl_data: pd.DataFrame, 
                                           all_fixtures: pd.DataFrame,
-                                          fixtures_with_elo: pd.DataFrame
+                                          fixtures_with_elo: pd.DataFrame,
+                                          bootstrap_players: pd.DataFrame = None
                                           ) -> pd.DataFrame:
         """
         Create player-fixture combinations for rest of current season projections.
@@ -186,11 +198,27 @@ class FPLDataManager:
             fpl_data: Player gameweek data
             all_fixtures: Combined home/away fixtures
             fixtures_with_elo: Fixtures dataframe with ELO ratings
+            bootstrap_players: Base player data from the FPL API bootstrap-static endpoint
             
         Returns:
             Dataframe with all player-fixture combinations
         """
-        playerfix = fpl_data[['player_name_id', 'team', 'position', 'season']].drop_duplicates()
+        # Use bootstrap data if explicitly provided (e.g. pre-season / GW1 cold start)
+        if bootstrap_players is not None and not bootstrap_players.empty:
+            playerfix = bootstrap_players.copy()
+            playerfix['player_name_id'] = playerfix['first_name'] + ' ' + playerfix['second_name']
+            position_map = {1: 'GK', 2: 'DEF', 3: 'MID', 4: 'FWD'}
+            playerfix['position'] = playerfix['element_type'].map(position_map)
+            playerfix['season'] = loader.season
+            playerfix['element'] = playerfix['id']
+            
+            playerfix = playerfix[['player_name_id', 'element', 'team', 'position', 'season']].drop_duplicates()
+        else:
+            # Otherwise, use the original rich historical method
+            cols = ['player_name_id', 'team', 'position', 'season']
+            if 'element' in fpl_data.columns:
+                cols.append('element')
+            playerfix = fpl_data[cols].drop_duplicates()
 
         # fixture ID is 'fixture_id' in all_fixtures (renamed by load_fixtures)
         # and 'fixture' in fpl_data (direct from FPL API history)
@@ -222,7 +250,7 @@ class FPLDataManager:
     
     def load_all_seasons(self) -> pd.DataFrame:
         """
-        Load all seasons from 2018-19 through 2025-26.
+        Load all seasons from 2018-19 through to current season.
         
         Returns:
             Combined dataframe with all seasons including rest-of-season projections
@@ -241,6 +269,9 @@ class FPLDataManager:
              r"data\fixtures2223.csv"),
             (20232024, "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master/data/2023-24/gws/merged_gw.csv",
              r"data\fixtures2324.csv"),
+             # 20242025: Load 2024-25 season with manual merge below
+             (20252026, "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master/data/2025-26/gws/merged_gw.csv",
+             r"data\fixtures2526.csv"),
         ]
         
         for season, gw_url, fixtures_path in historical_seasons:
@@ -255,9 +286,9 @@ class FPLDataManager:
             r"data\fixtures2425.csv"
         )
         
-        # Load 2025-26 season from API
-        print("Loading season 2025-26 (API)...")
-        _, _, _, current_year_players_allfixtures = self.load_2025_26_season_from_api()
+        # Load current season from API
+        print(f"Loading season {self.current_season} (API)...")
+        _, _, _, current_year_players_allfixtures = self.load_current_season_from_api()
         
         # Combine all merged data
         all_merged = pd.concat(list(self.merged_data.values()), axis=0)
@@ -267,6 +298,9 @@ class FPLDataManager:
         df_rest_of_current_season = df_rest_of_current_season.drop_duplicates(
             subset=['player_name_id', 'season','event', 'fixture_id']
         )
+        #Turns Mohamed_Salah_254 into Mohamed Salah. Players with the same name will be combined, but this is a rare occurrence and can be handled later if needed.
+        df_rest_of_current_season['player_name_id'] = df_rest_of_current_season['player_name_id'].str.replace('_', ' ').str.replace(r'\d+', '', regex=True).str.strip()
+        df_rest_of_current_season['event'] = df_rest_of_current_season['event'].astype(int)
 
         return df_rest_of_current_season
     
