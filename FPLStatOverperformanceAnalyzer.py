@@ -52,6 +52,7 @@ def build_player_adjustments(
     taper_k_90s=15.0, 
     only_if_significant=True,
     min_xstat=2.0,
+    alpha=0.05
 ):
     """
     df: DataFrame containing player match rows.
@@ -77,7 +78,8 @@ def build_player_adjustments(
             analyzer = FPLStatOverperformanceAnalyzer(
                 actual_array=grp[actual_col],
                 expected_array=grp[expected_col],
-                minutes_array=grp["minutes"]
+                minutes_array=grp["minutes"],
+                alpha=alpha
             )
             
             player_factors[key] = analyzer.adjustment_factor(

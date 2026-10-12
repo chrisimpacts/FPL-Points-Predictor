@@ -90,13 +90,13 @@ class FPLDataManager:
         
         return fpl_data, fixtures_with_elo, merged
     
-    def load_current_season_from_api(self, prediction_gw: int = 1) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    def load_current_season_from_api(self, predraft_prediction: bool = False) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
         """
         Load current season data from FPL API.
         
         Args:
-            prediction_gw: The gameweek we are predicting for. If prediction_gw == 1, 
-                           no gameweeks have been played, so we use bootstrap data.
+            predraft_prediction: Whether to use predraft predictions (bootstrap data). If True, 
+                                 no gameweeks have been played, so we use bootstrap data.
         
         Returns:
             Tuple of (fpl_data, fixtures, merged_data, all_fixtures_for_current_players)
@@ -106,8 +106,8 @@ class FPLDataManager:
         current_seasondf_api = fpl_fetcher.load_season_data(verbose=True)
         
         bootstrap_players = None
-        # If prediction_gw is 1, 0 gameweeks have been played, use bootstrap data
-        if prediction_gw == 1:
+        # If predraft_prediction is True, 0 gameweeks have been played, use bootstrap data
+        if predraft_prediction:
             print("Prediction GW is 1 (0 gameweeks played): fetching bootstrap player list...")
             bootstrap_players = fpl_fetcher.get_player_data()
         
@@ -164,6 +164,10 @@ class FPLDataManager:
             'home_team_name': 'team_name',
             'home_team_elo': 'team_elo',
             'away_team_elo': 'opp_team_elo',
+            'home_team_attack_elo': 'team_attack_elo',
+            'away_team_attack_elo': 'opp_team_attack_elo',
+            'home_team_defence_elo': 'team_defence_elo',
+            'away_team_defence_elo': 'opp_team_defence_elo',
             'team': 'team_code'
         })
         
@@ -178,6 +182,10 @@ class FPLDataManager:
             'home_team_name': 'opp_team_name',
             'home_team_elo': 'opp_team_elo',
             'away_team_elo': 'team_elo',
+            'away_team_attack_elo': 'team_attack_elo',
+            'home_team_attack_elo': 'opp_team_attack_elo',
+            'away_team_defence_elo': 'team_defence_elo',
+            'home_team_defence_elo': 'opp_team_defence_elo',
             'team': 'team_code'
         })
         
@@ -211,8 +219,8 @@ class FPLDataManager:
             playerfix['position'] = playerfix['element_type'].map(position_map)
             playerfix['season'] = loader.season
             playerfix['element'] = playerfix['id']
-            
-            playerfix = playerfix[['player_name_id', 'element', 'team', 'position', 'season']].drop_duplicates()
+            playerfix['value'] = playerfix['now_cost']
+            playerfix = playerfix[['player_name_id', 'element', 'team', 'position', 'season', 'value']].drop_duplicates()
         else:
             # Otherwise, use the original rich historical method
             cols = ['player_name_id', 'team', 'position', 'season']
@@ -255,7 +263,7 @@ class FPLDataManager:
         Returns:
             Combined dataframe with all seasons including rest-of-season projections
         """
-        # Load historical seasons (2018-19 through 2023-24)
+        # Load seasons chronoligcally (Messing with the order will mess up ELO calculations)Historical seasons 2018-19 to 2023-24
         historical_seasons = [
             (20182019, "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master/data/2018-19/gws/merged_gw.csv", 
              r"data\fixtures1819.csv"),
@@ -269,21 +277,25 @@ class FPLDataManager:
              r"data\fixtures2223.csv"),
             (20232024, "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master/data/2023-24/gws/merged_gw.csv",
              r"data\fixtures2324.csv"),
-             # 20242025: Load 2024-25 season with manual merge below
-             (20252026, "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master/data/2025-26/gws/merged_gw.csv",
-             r"data\fixtures2526.csv"),
         ]
-        
+
         for season, gw_url, fixtures_path in historical_seasons:
-            print(f"Loading season {season}...")
             self.load_historical_season(season, gw_url, fixtures_path)
-        
-        # Load 2024-25 season with manual merge
+
+        # 2024-25 Season (Manual Merge)
         print("Loading season 2024-25 (manual merge)...")
         self.load_2024_25_season(
             r"data\vaastavplayergwsmerged_gw1-21.csv",
             r"data\vaastavplayergwsmerged_gw22-38.csv",
             r"data\fixtures2425.csv"
+        )
+
+        # 2025-26 Season
+        print("Loading season 2025-26...")
+        self.load_historical_season(
+            20252026,
+            "https://raw.githubusercontent.com/vaastav/Fantasy-Premier-League/master/data/2025-26/gws/merged_gw.csv",
+            r"data\fixtures2526.csv"
         )
         
         # Load current season from API

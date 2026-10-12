@@ -17,12 +17,14 @@ class FPLRunningAveragesCalculator:
         self.current_season = current_season
         self.base_fields = [
             'player_name_id', 'element', 'season', 'value', 'event', 'fixture','minutes', 'total_points',
-            'team_elo', 'opp_team_elo', 'position', 'goals_scored', 'assists', 'bonus',
+            'team_elo', 'opp_team_elo', 
+            'team_attack_elo', 'opp_team_attack_elo', 'team_defence_elo', 'opp_team_defence_elo',
+            'position', 'goals_scored', 'assists', 'bonus',
             'bps', 'clean_sheets', 'goals_conceded', 'was_home',
             'expected_goals', 'expected_assists', 'expected_goal_involvements',
             'expected_goals_conceded', 'team_name', 'opp_team_name', 
             'cbi', 'defensive_contribution', 'recoveries', 'tackles',
-            'saves'
+            'saves','starts'
         ]
     
     def calculate(self, 
@@ -93,9 +95,16 @@ class FPLRunningAveragesCalculator:
         """Build season total and derived per-90 statistics."""
         return [
             """SUM(minutes) OVER (PARTITION BY player_name_id, season) AS player_season_minutes_total""",
-            """(SUM(expected_goals) OVER (PARTITION BY player_name_id) / 
-                NULLIF(SUM(goals_scored) OVER (PARTITION BY player_name_id), 0))
-                    AS xg_over_g_ratio""",
+            """COALESCE(
+                (SUM(expected_goals) OVER (
+                    PARTITION BY player_name_id ORDER BY season ASC, event ASC, fixture ASC 
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                ) / NULLIF(SUM(CASE WHEN expected_goals IS NOT NULL THEN goals_scored ELSE 0 END) OVER (
+                    PARTITION BY player_name_id ORDER BY season ASC, event ASC, fixture ASC 
+                    ROWS BETWEEN UNBOUNDED PRECEDING AND 1 PRECEDING
+                ), 0)), 
+                1.0 -- default ratio if no expected goals or goals scored yet
+            ) AS xg_over_g_ratio""",
             """(SUM(total_points) OVER (PARTITION BY player_name_id, season) / 
                 NULLIF(SUM(minutes) OVER (PARTITION BY player_name_id, season), 0) * 90.0)
                     AS player_season_points_per90""",
@@ -364,7 +373,7 @@ class FPLRunningAveragesCalculator:
                     AVG(CASE WHEN total_points IS NOT NULL
                         THEN {elo_per90_expr} ELSE NULL END) OVER (
                         PARTITION BY player_name_id
-                        ORDER BY season ASC, event ASC
+                        ORDER BY season ASC, event ASC, fixture ASC
                         ROWS BETWEEN {window} PRECEDING AND 1 PRECEDING
                     )
                 END AS {avg_name_elo_per90}""")

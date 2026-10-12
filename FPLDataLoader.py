@@ -5,6 +5,8 @@ import re
 class FPLDataLoader:
     # Class-level ELO ratings dictionary shared across all seasons
     _global_elo_ratings = {}
+    _global_attack_elo = {}
+    _global_defence_elo = {}
 
     teams_by_season = {
         20162017: {
@@ -365,6 +367,8 @@ class FPLDataLoader:
         
         if reset_elo:
             FPLDataLoader._global_elo_ratings = {}
+            FPLDataLoader._global_attack_elo = {}
+            FPLDataLoader._global_defence_elo = {}
 
     @classmethod
     #fixes the elo ratings to the class, so that the elo ratings persist for following seasons (as long as analysis is done sequentially)
@@ -450,31 +454,40 @@ class FPLDataLoader:
         )
 
     def add_elo_to_fixtures(self):
-        """Add ELO ratings to fixtures, carrying over from previous seasons."""
-        # Sort by kickoff_time
+        """Add ELO and Split ELO (Attack & defence) ratings to fixtures."""
         self.fixtures = self.fixtures.sort_values("fixture_kickoff_time").reset_index(drop=True)
         
-        home_elo_list = []
-        away_elo_list = []
+        home_elo_list, away_elo_list = [], []
+        home_att_list, away_att_list = [], []
+        home_def_list, away_def_list = [], []
         
         for _, row in self.fixtures.iterrows():
             home = row['home_team_name']
             away = row['away_team_name']
             
-            # Get current ratings from global dictionary or default
+            # Get current ratings
             R_home = FPLDataLoader._global_elo_ratings.get(home, self.START_RATING)
             R_away = FPLDataLoader._global_elo_ratings.get(away, self.START_RATING)
+            
+            Att_home = FPLDataLoader._global_attack_elo.get(home, self.START_RATING)
+            Def_home = FPLDataLoader._global_defence_elo.get(home, self.START_RATING)
+            Att_away = FPLDataLoader._global_attack_elo.get(away, self.START_RATING)
+            Def_away = FPLDataLoader._global_defence_elo.get(away, self.START_RATING)
             
             # Save pre-match ratings
             home_elo_list.append(R_home)
             away_elo_list.append(R_away)
+            home_att_list.append(Att_home)
+            home_def_list.append(Def_home)
+            away_att_list.append(Att_away)
+            away_def_list.append(Def_away)
             
             # Only update if scores are available
             if not pd.isna(row['fixture_team_h_score']) and not pd.isna(row['fixture_team_a_score']):
                 home_score = row['fixture_team_h_score']
                 away_score = row['fixture_team_a_score']
                 
-                # Actual results
+                # --- ORIGINAL WIN/LOSS ELO ---
                 if home_score > away_score:
                     S_home, S_away = 1, 0
                 elif home_score < away_score:
@@ -482,17 +495,31 @@ class FPLDataLoader:
                 else:
                     S_home, S_away = 0.5, 0.5
                 
-                # Expected results
                 E_home = 1 / (1 + 10 ** ((R_away - R_home) / 400))
                 E_away = 1 - E_home
                 
-                # Update ratings in global dictionary
                 FPLDataLoader._global_elo_ratings[home] = R_home + self.K * (S_home - E_home)
                 FPLDataLoader._global_elo_ratings[away] = R_away + self.K * (S_away - E_away)
+                
+                # --- SPLIT ATTACK & DEFENCE ELO ---
+                # Expected goals scaled by 400
+                E_home_goals = max(0.1, 1.5 + (Att_home - Def_away) / 400)
+                E_away_goals = max(0.1, 1.5 + (Att_away - Def_home) / 400)
+                
+                # Update logic: If team scores more than expected, Attack goes UP and Opponent Defence goes DOWN
+                FPLDataLoader._global_attack_elo[home] = Att_home + self.K * (home_score - E_home_goals)
+                FPLDataLoader._global_defence_elo[away] = Def_away - self.K * (home_score - E_home_goals)
+                
+                FPLDataLoader._global_attack_elo[away] = Att_away + self.K * (away_score - E_away_goals)
+                FPLDataLoader._global_defence_elo[home] = Def_home - self.K * (away_score - E_away_goals)
         
         # Add to dataframe
         self.fixtures['home_team_elo'] = home_elo_list
         self.fixtures['away_team_elo'] = away_elo_list
+        self.fixtures['home_team_attack_elo'] = home_att_list
+        self.fixtures['home_team_defence_elo'] = home_def_list
+        self.fixtures['away_team_attack_elo'] = away_att_list
+        self.fixtures['away_team_defence_elo'] = away_def_list
         
         return self.fixtures
 
@@ -528,15 +555,13 @@ class FPLDataLoader:
         self.merged_data['opp_team_name'] = np.where(was_home, team_a_names, team_h_names)
         
         # 5. Assign ELOs vectorially
-        self.merged_data['team_elo'] = np.where(
-            was_home, 
-            self.merged_data['home_team_elo'], 
-            self.merged_data['away_team_elo']
-        )
-        self.merged_data['opp_team_elo'] = np.where(
-            was_home, 
-            self.merged_data['away_team_elo'], 
-            self.merged_data['home_team_elo']
-        )
+        self.merged_data['team_elo'] = np.where(was_home, self.merged_data['home_team_elo'], self.merged_data['away_team_elo'])
+        self.merged_data['opp_team_elo'] = np.where(was_home, self.merged_data['away_team_elo'], self.merged_data['home_team_elo'])
+        
+        self.merged_data['team_attack_elo'] = np.where(was_home, self.merged_data['home_team_attack_elo'], self.merged_data['away_team_attack_elo'])
+        self.merged_data['opp_team_attack_elo'] = np.where(was_home, self.merged_data['away_team_attack_elo'], self.merged_data['home_team_attack_elo'])
+        
+        self.merged_data['team_defence_elo'] = np.where(was_home, self.merged_data['home_team_defence_elo'], self.merged_data['away_team_defence_elo'])
+        self.merged_data['opp_team_defence_elo'] = np.where(was_home, self.merged_data['away_team_defence_elo'], self.merged_data['home_team_defence_elo'])
         
         return self.merged_data

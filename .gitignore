@@ -4,6 +4,14 @@ __pycache__/CJDH_local_settings.cpython-311.pyc
 # Ignore huge CSVs
 data/FPL_CurrentS_Player_Allfixtures_vaastav.csv
 data/FPL_Data_GWs_2018to25_vaastav.csv
+data/playergwdf.csv
+
+# Ignore PBI Dashboards
+Power BI Dashboards/
+*.pbix
+
+# Ignore Archive
+Archive/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
