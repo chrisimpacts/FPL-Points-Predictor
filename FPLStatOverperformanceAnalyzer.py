@@ -55,14 +55,14 @@ def build_player_adjustments(
     alpha=0.05
 ):
     """
-    df: DataFrame containing player match rows (must include 'team' column).
+    df: DataFrame containing player match rows (must include 'team_name' column).
     """
     # Only consider games where the player actually stepped on the pitch
     played = df[df["minutes"] > 0].copy()
     result = {}
 
     # Update: Group by both player and team
-    for (player_id, team), grp in played.groupby(["player_name_id", "team"]):
+    for (player_id, team_name), grp in played.groupby(["player_name_id", "team_name"]):
         player_factors = {}
         
         for actual_col, expected_col, key in stat_pairs:
@@ -83,14 +83,14 @@ def build_player_adjustments(
             )
             
         # Store using a tuple key
-        result[(player_id, team)] = player_factors
+        result[(player_id, team_name)] = player_factors
 
     return result
 
 
 def apply_adjustments(prediction_data, adjustments, col_map=None):
     """
-    prediction_data must include 'player_name_id' and 'team' columns.
+    prediction_data must include 'player_name_id' and 'team_name' columns.
     """
     if col_map is None:
         col_map = {"xg": "xgp90_pred", "xa": "xap90_pred"}
@@ -99,9 +99,9 @@ def apply_adjustments(prediction_data, adjustments, col_map=None):
         if col not in prediction_data.columns:
             continue
             
-        # Update: Map factors using the (player_name_id, team) tuple
+        # Update: Map factors using the (player_name_id, team_name) tuple
         factors = prediction_data.apply(
-            lambda row: adjustments.get((row["player_name_id"], row["team"]), {}).get(key, 1.0),
+            lambda row: adjustments.get((row["player_name_id"], row["team_name"]), {}).get(key, 1.0),
             axis=1
         )
         
