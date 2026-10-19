@@ -55,26 +55,21 @@ def build_player_adjustments(
     alpha=0.05
 ):
     """
-    df: DataFrame containing player match rows.
-    stat_pairs: list of (actual_col, expected_col, key)
-    taper_k_90s: number of 90s to reach 50% credibility (50% observed, 50% prior)
-    only_if_significant: if True, only apply adjustments if overperformance is statistically significant
-    min_xstat: minimum cumulative xStat to consider applying adjustments (prevents overfitting on small samples)
+    df: DataFrame containing player match rows (must include 'team' column).
     """
     # Only consider games where the player actually stepped on the pitch
     played = df[df["minutes"] > 0].copy()
     result = {}
 
-    for player_id, grp in played.groupby("player_name_id"):
+    # Update: Group by both player and team
+    for (player_id, team), grp in played.groupby(["player_name_id", "team"]):
         player_factors = {}
         
         for actual_col, expected_col, key in stat_pairs:
-            # Check if cumulative xStat meets the floor
             if grp[expected_col].sum() < min_xstat:
                 player_factors[key] = 1.0
                 continue
             
-            # Pass the arrays (Series) directly to the Analyzer
             analyzer = FPLStatOverperformanceAnalyzer(
                 actual_array=grp[actual_col],
                 expected_array=grp[expected_col],
@@ -87,17 +82,15 @@ def build_player_adjustments(
                 only_if_significant=only_if_significant
             )
             
-        result[player_id] = player_factors
+        # Store using a tuple key
+        result[(player_id, team)] = player_factors
 
     return result
 
 
 def apply_adjustments(prediction_data, adjustments, col_map=None):
     """
-    Multiplies prediction columns by per-player factors.
-    Saves originals as *_raw and adds *_overperf_factor columns.
-
-    col_map defaults to {'xg': 'xgp90_pred', 'xa': 'xap90_pred'}.
+    prediction_data must include 'player_name_id' and 'team' columns.
     """
     if col_map is None:
         col_map = {"xg": "xgp90_pred", "xa": "xap90_pred"}
@@ -105,9 +98,13 @@ def apply_adjustments(prediction_data, adjustments, col_map=None):
     for key, col in col_map.items():
         if col not in prediction_data.columns:
             continue
-        factors = prediction_data["player_name_id"].map(
-            lambda p: adjustments.get(p, {}).get(key, 1.0)
+            
+        # Update: Map factors using the (player_name_id, team) tuple
+        factors = prediction_data.apply(
+            lambda row: adjustments.get((row["player_name_id"], row["team"]), {}).get(key, 1.0),
+            axis=1
         )
+        
         prediction_data[f"{col}_raw"]             = prediction_data[col].copy()
         prediction_data[col]                      = prediction_data[col] * factors
         prediction_data[f"{key}_overperf_factor"] = factors
